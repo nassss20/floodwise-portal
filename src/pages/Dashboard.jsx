@@ -38,15 +38,15 @@ const renderSupplies = (suppliesString, colorClass) => {
 
 export default function Dashboard() {
   const dashboardUrl = "https://geouitm.maps.arcgis.com/apps/dashboards/448d73b6469e46b58f3ea80689d3d4ee";
-  const { user, isEditor, isFirstTimeLogin, clearFirstTimeLogin, canViewRoads, canViewRivers, canViewPPS } = useAuth();
+  const { user, userRole, isEditor, isFirstTimeLogin, clearFirstTimeLogin, canViewRoads, canViewRivers, canViewPPS } = useAuth();
 
   // Tab State
   const [activeTab, setActiveTab] = useState(() => {
-    if (canViewRoads) return 'roads';
-    if (canViewPPS) return 'pps';
-    if (canViewRivers) return 'rivers';
+    if (userRole === 'editor_jkm') return 'pps';
+    if (userRole === 'editor_jps') return 'rivers';
     return 'roads';
   });
+  const [hasSetInitialTab, setHasSetInitialTab] = useState(false);
 
   // Roads State
   const [logs, setLogs] = useState([]);
@@ -88,13 +88,14 @@ export default function Dashboard() {
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Set default tab on load based on permissions
+  // Set default initial tab on load based on agency role
   useEffect(() => {
-    if (activeTab === 'roads' && !canViewRoads) {
-      if (canViewPPS) setActiveTab('pps');
-      else if (canViewRivers) setActiveTab('rivers');
+    if (userRole && !hasSetInitialTab) {
+      if (userRole === 'editor_jkm') setActiveTab('pps');
+      else if (userRole === 'editor_jps') setActiveTab('rivers');
+      setHasSetInitialTab(true);
     }
-  }, [canViewRoads, canViewPPS, canViewRivers]);
+  }, [userRole, hasSetInitialTab]);
 
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
 
@@ -453,7 +454,7 @@ export default function Dashboard() {
           {canViewRoads && (
             <>
               <button
-                onClick={() => { setActiveTab('roads'); setMapMode('flood'); }}
+                onClick={() => { setActiveTab('roads'); setMapMode('flood'); setStatusFilter('All'); setCurrentPage(1); }}
                 className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'roads'
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
@@ -463,7 +464,7 @@ export default function Dashboard() {
                 Road Flood Updates
               </button>
               <button
-                onClick={() => { setActiveTab('road_defects'); setMapMode('defects'); }}
+                onClick={() => { setActiveTab('road_defects'); setMapMode('defects'); setStatusFilter('All'); setCurrentPage(1); }}
                 className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'road_defects'
                   ? 'border-orange-500 text-orange-600 dark:text-orange-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
@@ -476,7 +477,7 @@ export default function Dashboard() {
           )}
           {canViewPPS && (
             <button
-              onClick={() => { setActiveTab('pps'); setStatusFilter('All'); setCurrentPage(1); }}
+              onClick={() => { setActiveTab('pps'); setMapMode('flood'); setStatusFilter('All'); setCurrentPage(1); }}
               className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'pps'
                 ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
@@ -488,7 +489,7 @@ export default function Dashboard() {
           )}
           {canViewRivers && (
             <button
-              onClick={() => { setActiveTab('rivers'); setStatusFilter('All'); setCurrentPage(1); }}
+              onClick={() => { setActiveTab('rivers'); setMapMode('flood'); setStatusFilter('All'); setCurrentPage(1); }}
               className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'rivers'
                 ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
