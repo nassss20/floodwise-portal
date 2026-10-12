@@ -1,7 +1,8 @@
 import { Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { Droplets, LogOut, LayoutDashboard, Settings as SettingsIcon, ShieldAlert } from "lucide-react";
+import { Droplets, LogOut, LayoutDashboard, Settings as SettingsIcon, ShieldAlert, Download } from "lucide-react";
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { useAuth } from './context/AuthContext';
+import { usePWA } from './context/PWAContext';
 
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -10,6 +11,7 @@ import Admin from './pages/Admin';
 import ResetPassword from './pages/ResetPassword';
 import BackgroundMap from './components/BackgroundMap';
 import IdleTimer from './components/IdleTimer';
+import PWAPrompt from './components/PWAPrompt';
 
 // Protected Route Component wrapper
 const ProtectedRoute = ({ children }) => {
@@ -37,6 +39,7 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const { session, signOut, isAdmin, isBanned } = useAuth();
+  const { isInstallable, installApp } = usePWA();
   
   const handleLogout = async () => {
     await signOut();
@@ -104,6 +107,16 @@ function App() {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
+            {isInstallable && (
+              <button
+                onClick={installApp}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-semibold transition-all border border-blue-200/60 dark:border-blue-800/40 shadow-sm"
+                title="Install FloodWise as an app"
+              >
+                <Download size={14} />
+                <span className="hidden md:inline">Install App</span>
+              </button>
+            )}
             <ThemeSwitcher />
             <Link 
               to="/settings" 
@@ -156,6 +169,9 @@ function App() {
           />
         </Routes>
       </main>
+
+      {/* Global PWA update toast, offline banner, and install prompt */}
+      <PWAPrompt />
     </div>
     </IdleTimer>
   );

@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings as SettingsIcon, Save, Key, CheckCircle2, AlertCircle, User } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Key, CheckCircle2, AlertCircle, User, Smartphone, Download, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
+import { usePWA } from '../context/PWAContext';
 import PasswordInput from '../components/PasswordInput';
 
 export default function Settings() {
   const { user } = useAuth();
+  const { isInstallable, isInstalled, isIOS, installApp, isOnline, updateServiceWorker } = usePWA();
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateMsg, setUpdateMsg] = useState('');
+
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -18,6 +23,28 @@ export default function Settings() {
   const [isSubmittingUsername, setIsSubmittingUsername] = useState(false);
   const [usernameStatus, setUsernameStatus] = useState(null);
   const [usernameErrorMsg, setUsernameErrorMsg] = useState('');
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    setUpdateMsg('');
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) {
+          await reg.update();
+          setUpdateMsg('Checked! You are running the latest version.');
+        } else {
+          setUpdateMsg('Service Worker is active.');
+        }
+      } else {
+        setUpdateMsg('Service workers are not supported by this browser.');
+      }
+    } catch (err) {
+      setUpdateMsg('Unable to check for updates at this time.');
+    } finally {
+      setTimeout(() => setCheckingUpdate(false), 800);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -280,6 +307,109 @@ export default function Settings() {
             </button>
           </div>
         </form>
+      </div>
+
+      {/* PWA & Mobile App Section */}
+      <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-sm overflow-hidden mt-8">
+        <div className="p-6 border-b border-gray-200 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-900/50 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <Smartphone className="w-5 h-5 text-blue-500" />
+              Progressive Web App (PWA)
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Mobile installation, offline shell capabilities, and version management.
+            </p>
+          </div>
+          <span className={`px-2.5 py-1 text-xs font-semibold rounded-full flex items-center gap-1.5 ${isInstalled ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400'}`}>
+            <span className={`w-2 h-2 rounded-full ${isInstalled ? 'bg-green-500' : 'bg-blue-500'}`}></span>
+            {isInstalled ? 'Installed App' : 'Browser Mode'}
+          </span>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Install Status Card */}
+            <div className="p-4 rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-800/40 flex flex-col justify-between">
+              <div>
+                <p className="text-xs uppercase font-semibold tracking-wider text-gray-500 dark:text-gray-400">
+                  Installation
+                </p>
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white mt-1">
+                  {isInstalled ? 'Native App Active' : isInstallable ? 'Ready to Install' : isIOS ? 'Available via Safari' : 'Running in Web Browser'}
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {isInstalled 
+                    ? 'FloodWise is installed directly on your device home screen / desktop.' 
+                    : 'Install FloodWise for instantaneous launch, full-screen view, and offline capabilities.'}
+                </p>
+              </div>
+
+              {!isInstalled && (
+                <div className="mt-4 pt-3 border-t border-gray-200 dark:border-zinc-700/60">
+                  {isInstallable ? (
+                    <button
+                      onClick={installApp}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
+                    >
+                      <Download className="w-4 h-4" />
+                      Install FloodWise Now
+                    </button>
+                  ) : isIOS ? (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                      On iOS: Tap Safari Share &gt; "Add to Home Screen"
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-400">
+                      Already installed or use your browser's "Install App" button in the URL bar.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Offline & Cache Status Card */}
+            <div className="p-4 rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-800/40 flex flex-col justify-between">
+              <div>
+                <p className="text-xs uppercase font-semibold tracking-wider text-gray-500 dark:text-gray-400">
+                  Network &amp; Offline Cache
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  {isOnline ? (
+                    <>
+                      <Wifi className="w-4 h-4 text-green-500" />
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-white">Online &amp; Connected</h3>
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="w-4 h-4 text-amber-500" />
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-white">Offline Mode</h3>
+                    </>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Assets, maps, and fonts are cached via Workbox service worker for resilience during bad weather.
+                </p>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-gray-200 dark:border-zinc-700/60 flex items-center justify-between gap-3">
+                <button
+                  onClick={handleCheckUpdate}
+                  disabled={checkingUpdate}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? 'animate-spin' : ''}`} />
+                  Check for Updates
+                </button>
+                {updateMsg && (
+                  <span className="text-[11px] text-green-600 dark:text-green-400 font-medium truncate">
+                    {updateMsg}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
