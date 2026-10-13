@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { Droplets, LogOut, LayoutDashboard, Settings as SettingsIcon, ShieldAlert, Download } from "lucide-react";
+import { Droplets, LogOut, LayoutDashboard, Settings as SettingsIcon, ShieldAlert } from "lucide-react";
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { useAuth } from './context/AuthContext';
 import { usePWA } from './context/PWAContext';
+import { preloadGeoData } from './components/ArcGISLeafletMap';
 
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -39,6 +41,10 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const { session, signOut, isAdmin, isBanned } = useAuth();
+
+  useEffect(() => {
+    preloadGeoData();
+  }, []);
   
   const handleLogout = async () => {
     await signOut();

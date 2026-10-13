@@ -21,6 +21,149 @@ const DISTRICT_ROAD_MAP = {
 const BOUNDARY_LAYERS = [85, 88, 90]; // Segamat, JB, Kota Tinggi
 const PPS_LAYER = 97;
 
+// In-memory module-level cache for instant 0ms tab navigation
+let memoryGeoCache = null;
+let preloadPromise = null;
+const CACHE_NAME = 'floodwise-geojson-v1';
+
+async function getCachedData(key) {
+  if (typeof window !== 'undefined' && 'caches' in window) {
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      const res = await cache.match(key);
+      if (res) return await res.json();
+    } catch {
+      // ignore
+    }
+  }
+  try {
+    const raw = sessionStorage.getItem(`geo_${key}`);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+async function setCachedData(key, data) {
+  if (!data) return;
+  if (typeof window !== 'undefined' && 'caches' in window) {
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      const response = new Response(JSON.stringify(data), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      await cache.put(key, response);
+      return;
+    } catch {
+      // fallback
+    }
+  }
+  try {
+    sessionStorage.setItem(`geo_${key}`, JSON.stringify(data));
+  } catch {
+    // ignore
+  }
+}
+
+async function fetchSingleGeoJSON(url, cacheKey) {
+  const cached = await getCachedData(cacheKey);
+  if (cached) return cached;
+
+  const params = new URLSearchParams({
+    where: "1=1",
+    outFields: "*",
+    f: "geojson"
+  });
+
+  try {
+    const res = await fetch(`${url}/query?${params.toString()}`);
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json && json.features) {
+      setCachedData(cacheKey, json);
+    }
+    return json;
+  } catch (err) {
+    console.error("Failed to fetch GeoJSON from:", url, err);
+    return null;
+  }
+}
+
+export async function preloadGeoData() {
+  if (memoryGeoCache) return memoryGeoCache;
+  if (preloadPromise) return preloadPromise;
+
+  preloadPromise = (async () => {
+    try {
+      // 1. Check persistent browser cache for all 4 parts
+      const [cRivers, cPps, cRoads, cBoundaries] = await Promise.all([
+        getCachedData('rivers'),
+        getCachedData('pps'),
+        getCachedData('roads'),
+        getCachedData('boundaries')
+      ]);
+
+      if (cRivers && cPps && cRoads && cBoundaries) {
+        memoryGeoCache = {
+          rivers: cRivers,
+          pps: cPps,
+          roads: cRoads,
+          boundaries: cBoundaries
+        };
+      }
+
+      // 2. Fetch all layers in parallel (Promise.all - no sequential waterfall!)
+      const [riversData, ppsData, ...otherData] = await Promise.all([
+        fetchSingleGeoJSON(BASE_URL_RIVERS, 'rivers'),
+        fetchSingleGeoJSON(`${BASE_URL_ROADS_PPS}/${PPS_LAYER}`, 'pps'),
+        ...ROAD_LAYERS.map(id => fetchSingleGeoJSON(`${BASE_URL_ROADS_PPS}/${id}`, `road_${id}`)),
+        ...BOUNDARY_LAYERS.map(id => fetchSingleGeoJSON(`${BASE_URL_ROADS_PPS}/${id}`, `boundary_${id}`))
+      ]);
+
+      const rawRoads = otherData.slice(0, ROAD_LAYERS.length);
+      const rawBoundaries = otherData.slice(ROAD_LAYERS.length);
+
+      const roadsDataArray = [];
+      rawRoads.forEach(data => {
+        if (data && data.features) {
+          data.features.forEach(f => {
+            let dist = f.properties.DISTRICT || f.properties.District || f.properties.district;
+            if (dist) {
+              f.properties.DISTRICT = dist.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+            }
+          });
+          roadsDataArray.push(data);
+        }
+      });
+
+      const boundariesDataArray = rawBoundaries.filter(Boolean);
+
+      const resolved = {
+        rivers: riversData || memoryGeoCache?.rivers || null,
+        pps: ppsData || memoryGeoCache?.pps || null,
+        roads: roadsDataArray.length ? roadsDataArray : (memoryGeoCache?.roads || []),
+        boundaries: boundariesDataArray.length ? boundariesDataArray : (memoryGeoCache?.boundaries || [])
+      };
+
+      memoryGeoCache = resolved;
+      setCachedData('rivers', resolved.rivers);
+      setCachedData('pps', resolved.pps);
+      setCachedData('roads', resolved.roads);
+      setCachedData('boundaries', resolved.boundaries);
+
+      return resolved;
+    } catch (e) {
+      console.error("Error in preloadGeoData:", e);
+      return memoryGeoCache;
+    } finally {
+      preloadPromise = null;
+    }
+  })();
+
+  return preloadPromise;
+}
+
 function MapUpdater() {
   const map = useMap();
   useEffect(() => {
@@ -80,9 +223,11 @@ function MapController({ selectedFeature, layerRefs }) {
 export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], riverLogs = [], ppsData = [], selectedFeature = null, mapMode = 'flood' }) {
   const layerRefs = useRef({});
   const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted] = useState(true);
   const attemptedRoads = useRef(new Set());
-  const [geoData, setGeoData] = useState({
+  
+  // Instant initial state: if cached, map renders immediately on first frame!
+  const [geoData, setGeoData] = useState(() => memoryGeoCache || {
     rivers: null,
     roads: [],
     boundaries: [],
@@ -90,61 +235,37 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
   });
 
   useEffect(() => {
-    setMounted(true);
+    let isCancelled = false;
 
-    const fetchGeoJSON = async (url) => {
-      const params = new URLSearchParams({
-        where: "1=1",
-        outFields: "*",
-        f: "geojson"
+    // 1. If memory cache already exists, apply immediately (0 ms)
+    if (memoryGeoCache) {
+      setGeoData(memoryGeoCache);
+    } else {
+      // 2. Otherwise load persistent browser cache in < 15ms
+      Promise.all([
+        getCachedData('rivers'),
+        getCachedData('pps'),
+        getCachedData('roads'),
+        getCachedData('boundaries')
+      ]).then(([cRivers, cPps, cRoads, cBoundaries]) => {
+        if (!isCancelled && cRivers && cPps && cRoads && cBoundaries) {
+          const quick = { rivers: cRivers, pps: cPps, roads: cRoads, boundaries: cBoundaries };
+          memoryGeoCache = quick;
+          setGeoData(quick);
+        }
       });
-      try {
-        const res = await fetch(`${url}/query?${params.toString()}`);
-        if (!res.ok) return null;
-        return await res.json();
-      } catch (err) {
-        console.error("Failed to fetch GeoJSON from:", url, err);
-        return null;
+    }
+
+    // 3. Parallel fetch fresh telemetry / update cache in background
+    preloadGeoData().then((freshData) => {
+      if (!isCancelled && freshData) {
+        setGeoData(freshData);
       }
+    });
+
+    return () => {
+      isCancelled = true;
     };
-
-    const loadData = async () => {
-      try {
-        const riversData = await fetchGeoJSON(BASE_URL_RIVERS);
-        const ppsData = await fetchGeoJSON(`${BASE_URL_ROADS_PPS}/${PPS_LAYER}`);
-        
-        const roadsDataArray = [];
-        for (const id of ROAD_LAYERS) {
-          const data = await fetchGeoJSON(`${BASE_URL_ROADS_PPS}/${id}`);
-          if (data && data.features) {
-            data.features.forEach(f => {
-              let dist = f.properties.DISTRICT || f.properties.District || f.properties.district;
-              if (dist) {
-                f.properties.DISTRICT = dist.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-              }
-            });
-            roadsDataArray.push(data);
-          }
-        }
-
-        const boundariesDataArray = [];
-        for (const id of BOUNDARY_LAYERS) {
-          const data = await fetchGeoJSON(`${BASE_URL_ROADS_PPS}/${id}`);
-          if (data) boundariesDataArray.push(data);
-        }
-
-        setGeoData({
-          rivers: riversData,
-          pps: ppsData,
-          roads: roadsDataArray,
-          boundaries: boundariesDataArray
-        });
-      } catch (e) {
-        console.error(e);
-      }
-    };
-
-    loadData();
   }, []);
 
   // Visual stacking order for roads
