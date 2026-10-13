@@ -177,11 +177,12 @@ function MapUpdater() {
   return null;
 }
 
-function MapController({ selectedFeature, layerRefs }) {
+function MapController({ selectedFeature, layerRefs, activePinnedKeyRef }) {
   const map = useMap();
   useEffect(() => {
     if (!selectedFeature) return;
-    const layers = layerRefs.current[`${selectedFeature.type}-${selectedFeature.name}`];
+    const key = `${selectedFeature.type}-${selectedFeature.name}`;
+    const layers = layerRefs.current[key];
     if (layers && layers.length > 0) {
       let targetLayer = layers[0];
 
@@ -207,21 +208,71 @@ function MapController({ selectedFeature, layerRefs }) {
             }
           }
         });
-        
-        map.flyToBounds(targetLayer.getBounds(), { padding: [50, 50], maxZoom: 15, duration: 1.5 });
-      } else if (layers[0].getLatLng) {
-        map.flyTo(layers[0].getLatLng(), 15, { duration: 1.5 });
       }
-      // Open popup on the target layer
+
+      // Mark pinned key immediately
+      if (activePinnedKeyRef) {
+        activePinnedKeyRef.current = key;
+      }
+      layers.forEach(l => { l._isClicked = true; });
       targetLayer._isClicked = true;
-      targetLayer.openPopup();
+
+      const openPopupAndPin = () => {
+        if (!targetLayer) return;
+        if (activePinnedKeyRef) {
+          activePinnedKeyRef.current = key;
+        }
+        layers.forEach(l => { l._isClicked = true; });
+        targetLayer._isClicked = true;
+
+        const popupLatLng = targetLayer.getBounds 
+          ? targetLayer.getBounds().getCenter() 
+          : (targetLayer.getLatLng ? targetLayer.getLatLng() : null);
+
+        if (popupLatLng) {
+          targetLayer.openPopup(popupLatLng);
+        } else {
+          targetLayer.openPopup();
+        }
+      };
+
+      let animationFinished = false;
+      const onMoveEnd = () => {
+        if (animationFinished) return;
+        animationFinished = true;
+        map.off('moveend', onMoveEnd);
+        setTimeout(openPopupAndPin, 60);
+      };
+
+      map.on('moveend', onMoveEnd);
+
+      if (targetLayer.getBounds) {
+        map.flyToBounds(targetLayer.getBounds(), { padding: [50, 50], maxZoom: 15, duration: 1.2 });
+      } else if (targetLayer.getLatLng) {
+        map.flyTo(targetLayer.getLatLng(), 15, { duration: 1.2 });
+      }
+
+      // Fallback timer: in case the map was already centered at or near the target bounds and moveend doesn't fire
+      const fallbackTimer = setTimeout(() => {
+        if (!animationFinished) {
+          animationFinished = true;
+          map.off('moveend', onMoveEnd);
+          openPopupAndPin();
+        }
+      }, 1300);
+
+      return () => {
+        map.off('moveend', onMoveEnd);
+        clearTimeout(fallbackTimer);
+      };
     }
-  }, [selectedFeature, map, layerRefs]);
+  }, [selectedFeature, map, layerRefs, activePinnedKeyRef]);
   return null;
 }
 
 export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], riverLogs = [], ppsData = [], selectedFeature = null, mapMode = 'flood' }) {
   const layerRefs = useRef({});
+  const activePinnedKeyRef = useRef(null);
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(true);
   const attemptedRoads = useRef(new Set());
@@ -568,10 +619,37 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
         </div>
       `, { className: 'custom-popup' });
 
-      layer.on('mouseover', function() { if (!this._isClicked) this.openPopup(); });
-      layer.on('mouseout', function() { if (!this._isClicked) this.closePopup(); });
-      layer.on('click', function() { this._isClicked = true; this.openPopup(); });
-      layer.on('popupclose', function() { this._isClicked = false; });
+      layer.on('mouseover', function(e) {
+        if (activePinnedKeyRef.current && activePinnedKeyRef.current !== `river-${name}`) return;
+        if (!this._isClicked) {
+          const c = e?.latlng || (this.getBounds ? this.getBounds().getCenter() : null);
+          if (c) this.openPopup(c);
+          else this.openPopup();
+        }
+      });
+      layer.on('mouseout', function() {
+        if (activePinnedKeyRef.current) return;
+        if (!this._isClicked) this.closePopup();
+      });
+      layer.on('click', function(e) {
+        const key = `river-${name}`;
+        activePinnedKeyRef.current = key;
+        if (layerRefs.current[key]) {
+          layerRefs.current[key].forEach(l => { l._isClicked = true; });
+        }
+        this._isClicked = true;
+        this.openPopup(e?.latlng);
+      });
+      layer.on('popupclose', function() {
+        const key = `river-${name}`;
+        if (activePinnedKeyRef.current === key) {
+          activePinnedKeyRef.current = null;
+        }
+        if (layerRefs.current[key]) {
+          layerRefs.current[key].forEach(l => { l._isClicked = false; });
+        }
+        this._isClicked = false;
+      });
     }
   };
 
@@ -647,10 +725,37 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
         `, { className: 'custom-popup' });
       }
 
-      layer.on('mouseover', function() { if (!this._isClicked) this.openPopup(); });
-      layer.on('mouseout', function() { if (!this._isClicked) this.closePopup(); });
-      layer.on('click', function() { this._isClicked = true; this.openPopup(); });
-      layer.on('popupclose', function() { this._isClicked = false; });
+      layer.on('mouseover', function(e) {
+        if (activePinnedKeyRef.current && activePinnedKeyRef.current !== `road-${name}`) return;
+        if (!this._isClicked) {
+          const c = e?.latlng || (this.getBounds ? this.getBounds().getCenter() : null);
+          if (c) this.openPopup(c);
+          else this.openPopup();
+        }
+      });
+      layer.on('mouseout', function() {
+        if (activePinnedKeyRef.current) return;
+        if (!this._isClicked) this.closePopup();
+      });
+      layer.on('click', function(e) {
+        const key = `road-${name}`;
+        activePinnedKeyRef.current = key;
+        if (layerRefs.current[key]) {
+          layerRefs.current[key].forEach(l => { l._isClicked = true; });
+        }
+        this._isClicked = true;
+        this.openPopup(e?.latlng);
+      });
+      layer.on('popupclose', function() {
+        const key = `road-${name}`;
+        if (activePinnedKeyRef.current === key) {
+          activePinnedKeyRef.current = null;
+        }
+        if (layerRefs.current[key]) {
+          layerRefs.current[key].forEach(l => { l._isClicked = false; });
+        }
+        this._isClicked = false;
+      });
     }
   };
 
@@ -677,10 +782,33 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
         </div>
       `, { className: 'custom-popup' });
 
-      layer.on('mouseover', function() { if (!this._isClicked) this.openPopup(); });
-      layer.on('mouseout', function() { if (!this._isClicked) this.closePopup(); });
-      layer.on('click', function() { this._isClicked = true; this.openPopup(); });
-      layer.on('popupclose', function() { this._isClicked = false; });
+      layer.on('mouseover', function() {
+        if (activePinnedKeyRef.current && activePinnedKeyRef.current !== `pps-${name}`) return;
+        if (!this._isClicked) this.openPopup();
+      });
+      layer.on('mouseout', function() {
+        if (activePinnedKeyRef.current) return;
+        if (!this._isClicked) this.closePopup();
+      });
+      layer.on('click', function() {
+        const key = `pps-${name}`;
+        activePinnedKeyRef.current = key;
+        if (layerRefs.current[key]) {
+          layerRefs.current[key].forEach(l => { l._isClicked = true; });
+        }
+        this._isClicked = true;
+        this.openPopup();
+      });
+      layer.on('popupclose', function() {
+        const key = `pps-${name}`;
+        if (activePinnedKeyRef.current === key) {
+          activePinnedKeyRef.current = null;
+        }
+        if (layerRefs.current[key]) {
+          layerRefs.current[key].forEach(l => { l._isClicked = false; });
+        }
+        this._isClicked = false;
+      });
     }
   };
 
@@ -715,7 +843,7 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
         />
         
         <MapUpdater />
-        <MapController selectedFeature={selectedFeature} layerRefs={layerRefs} />
+        <MapController selectedFeature={selectedFeature} layerRefs={layerRefs} activePinnedKeyRef={activePinnedKeyRef} />
 
         {geoData.boundaries.map((boundaryLayerData, idx) => (
           <GeoJSON 
