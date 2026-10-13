@@ -70,6 +70,7 @@ function MapController({ selectedFeature, layerRefs }) {
         map.flyTo(layers[0].getLatLng(), 15, { duration: 1.5 });
       }
       // Open popup on the target layer
+      targetLayer._isClicked = true;
       targetLayer.openPopup();
     }
   }, [selectedFeature, map, layerRefs]);
@@ -349,6 +350,88 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
     });
   };
 
+  // Calculate center coordinates of a Leaflet layer or GeoJSON feature
+  const getLayerCenter = (layer, feature) => {
+    try {
+      if (layer.getBounds) {
+        const c = layer.getBounds().getCenter();
+        if (c && !isNaN(c.lat) && !isNaN(c.lng)) {
+          return { lat: c.lat.toFixed(6), lng: c.lng.toFixed(6) };
+        }
+      }
+      if (layer.getLatLng) {
+        const c = layer.getLatLng();
+        if (c && !isNaN(c.lat) && !isNaN(c.lng)) {
+          return { lat: c.lat.toFixed(6), lng: c.lng.toFixed(6) };
+        }
+      }
+      if (feature?.geometry?.coordinates) {
+        const coords = feature.geometry.coordinates;
+        if (feature.geometry.type === 'Point') {
+          return { lat: coords[1].toFixed(6), lng: coords[0].toFixed(6) };
+        }
+        if (feature.geometry.type === 'LineString' && coords.length > 0) {
+          const mid = coords[Math.floor(coords.length / 2)];
+          return { lat: mid[1].toFixed(6), lng: mid[0].toFixed(6) };
+        }
+        if (feature.geometry.type === 'MultiLineString' && coords[0]?.length > 0) {
+          const mid = coords[0][Math.floor(coords[0].length / 2)];
+          return { lat: mid[1].toFixed(6), lng: mid[0].toFixed(6) };
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  };
+
+  // Google Maps link button generator
+  const getGoogleMapsButtonHtml = (lat, lng) => {
+    if (!lat || !lng) return '';
+    const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    return `
+      <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(156, 163, 175, 0.25);">
+        <a 
+          href="${gmapsUrl}" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          title="Open coordinates (${lat}, ${lng}) in Google Maps"
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            width: 100%;
+            padding: 6px 10px;
+            border-radius: 6px;
+            background-color: #2563eb;
+            color: #ffffff !important;
+            font-size: 11px;
+            font-weight: 600;
+            text-decoration: none !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+          "
+          onmouseover="this.style.backgroundColor='#1d4ed8'"
+          onmouseout="this.style.backgroundColor='#2563eb'"
+          onclick="event.stopPropagation();"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+          <span>Open in Google Maps</span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.85;">
+            <path d="M15 3h6v6"/>
+            <path d="M10 14 21 3"/>
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          </svg>
+        </a>
+      </div>
+    `;
+  };
+
   // Tooltip bindings
   const onEachRiver = (feature, layer) => {
     if (feature.properties) {
@@ -358,13 +441,16 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
       
       const riverLog = riverLogs?.find(log => log.river_name === name);
       const status = riverLog ? riverLog.status : feature.properties.Status;
+      const coords = getLayerCenter(layer, feature);
+      const gmapsBtn = coords ? getGoogleMapsButtonHtml(coords.lat, coords.lng) : '';
 
       // Clickable popup for details
       layer.bindPopup(`
-        <div class="font-sans text-xs min-w-[150px]">
+        <div class="font-sans text-xs min-w-[170px]">
           <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
           Water Level: ${feature.properties.Water_Level?.toFixed(2)}m<br/>
           Status: ${status}
+          ${gmapsBtn}
         </div>
       `, { className: 'custom-popup' });
 
@@ -380,6 +466,9 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
       const name = feature.properties.Name || feature.properties.NAME;
       if (!layerRefs.current[`road-${name}`]) layerRefs.current[`road-${name}`] = [];
       layerRefs.current[`road-${name}`].push(layer);
+
+      const coords = getLayerCenter(layer, feature);
+      const gmapsBtn = coords ? getGoogleMapsButtonHtml(coords.lat, coords.lng) : '';
 
       if (mapMode === 'defects') {
         const defectLog = defectLogs?.find(log => log.road_name === name);
@@ -397,21 +486,23 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
           const causesHtml = causes.length > 0 ? `<ul class="list-disc pl-4 mt-1">${causes.map(c => `<li>${c}</li>`).join('')}</ul>` : '<span>-</span>';
 
           layer.bindPopup(`
-            <div class="font-sans text-xs min-w-[200px]">
+            <div class="font-sans text-xs min-w-[210px]">
               <strong class="block text-sm border-b border-gray-600 pb-1 mb-1 text-orange-600">${name}</strong>
               <div class="mb-1 text-gray-500">${typeStr}${routeStr}</div>
               <div class="mb-1"><span class="font-semibold">Status:</span> ${defectLog.status || 'Ongoing'}</div>
               <div class="mb-1"><span class="font-semibold block">Types:</span> ${typesHtml}</div>
               <div><span class="font-semibold block">Causes:</span> ${causesHtml}</div>
               ${defectLog.notes ? `<div class="mt-2 pt-2 border-t border-gray-200"><span class="font-semibold block">Notes:</span> <span class="italic text-gray-600">"${defectLog.notes}"</span></div>` : ''}
+              ${gmapsBtn}
             </div>
           `, { className: 'custom-popup' });
         } else {
           layer.bindPopup(`
-            <div class="font-sans text-xs min-w-[150px]">
+            <div class="font-sans text-xs min-w-[170px]">
               <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
               <div class="mb-1 text-gray-500">${typeStr}${routeStr}</div>
               <div class="text-gray-500 italic">No defects reported.</div>
+              ${gmapsBtn}
             </div>
           `, { className: 'custom-popup' });
         }
@@ -426,11 +517,12 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
         const depthStr = depthRaw !== null && depthRaw !== undefined ? `${parseFloat(depthRaw).toFixed(2)}m` : 'N/A';
 
         layer.bindPopup(`
-          <div class="font-sans text-xs min-w-[150px]">
+          <div class="font-sans text-xs min-w-[170px]">
             <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
             <div class="mb-1 text-gray-500">${typeStr}${routeStr}</div>
             <div class="mb-1"><span class="font-semibold">Status:</span> ${status}</div>
             <div><span class="font-semibold">Water Depth:</span> ${depthStr}</div>
+            ${gmapsBtn}
           </div>
         `, { className: 'custom-popup' });
       }
@@ -451,12 +543,15 @@ export default function ArcGISLeafletMap({ roadsLogs = [], defectLogs = [], rive
       const liveData = ppsData?.find(p => p.PPS_Name === name);
       const status = liveData ? liveData.Status : feature.properties.Status;
       const capacity = liveData ? liveData.Capacity : feature.properties.Capacity;
+      const coords = getLayerCenter(layer, feature);
+      const gmapsBtn = coords ? getGoogleMapsButtonHtml(coords.lat, coords.lng) : '';
 
       layer.bindPopup(`
-        <div class="font-sans text-xs min-w-[150px]">
+        <div class="font-sans text-xs min-w-[170px]">
           <strong class="block text-sm border-b border-gray-600 pb-1 mb-1">${name}</strong>
           Status: ${status}<br/>
           Capacity: ${capacity || 'N/A'}
+          ${gmapsBtn}
         </div>
       `, { className: 'custom-popup' });
 
