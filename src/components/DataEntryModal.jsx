@@ -244,10 +244,11 @@ export default function DataEntryModal({ isOpen, onClose }) {
     }
   }, [floodDepth, entryType]);
 
-  // Auto-update river status based on water level rules
-  useEffect(() => {
-    if (entryType === 'River' && waterLevel !== '') {
-      const level = parseFloat(waterLevel);
+  // Auto-suggest river status based on water level benchmark when user types depth
+  const handleWaterLevelChange = (val) => {
+    setWaterLevel(val);
+    if (val !== '') {
+      const level = parseFloat(val);
       if (!isNaN(level)) {
         if (level <= 34.00) {
           setRiverStatus('Normal');
@@ -260,7 +261,7 @@ export default function DataEntryModal({ isOpen, onClose }) {
         }
       }
     }
-  }, [waterLevel, entryType]);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -712,58 +713,75 @@ export default function DataEntryModal({ isOpen, onClose }) {
                     ) : entryType === 'River' ? (
                       // --- RIVER FORM ---
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1.5 md:col-span-2">
-                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Water Level (meters)</label>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Water Level (meters) *</label>
+                            <span className="text-[11px] text-gray-400 dark:text-gray-500">Auto-suggests</span>
+                          </div>
                           <input
-                            type="number" step="0.01" required value={waterLevel} onChange={(e) => setWaterLevel(e.target.value)}
+                            type="number" step="0.01" required value={waterLevel} onChange={(e) => handleWaterLevelChange(e.target.value)}
                             disabled={!selectedFeatureId || isSubmitting} placeholder="e.g. 35.50"
-                            className="block w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700"
+                            className="block w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-white"
                           />
-                          {riverStatus && (
-                            <div className="mt-2 p-3 rounded-lg border flex items-start gap-3 bg-gray-50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700">
-                              {riverStatus === 'Normal' && <div className="text-green-500 mt-0.5"><CheckCircle2 className="w-5 h-5" /></div>}
-                              {riverStatus === 'Alert' && <div className="text-yellow-500 mt-0.5"><AlertCircle className="w-5 h-5" /></div>}
-                              {riverStatus === 'Warning' && <div className="text-orange-500 mt-0.5"><AlertCircle className="w-5 h-5" /></div>}
-                              {riverStatus === 'Danger' && <div className="text-red-500 mt-0.5"><AlertCircle className="w-5 h-5" /></div>}
-
-                              <div>
-                                <h4 className={`font-semibold text-sm ${riverStatus === 'Normal' ? 'text-green-700 dark:text-green-400' :
-                                  riverStatus === 'Alert' ? 'text-yellow-700 dark:text-yellow-400' :
-                                    riverStatus === 'Warning' ? 'text-orange-700 dark:text-orange-400' :
-                                      'text-red-700 dark:text-red-400'
-                                  }`}>
-                                  {riverStatus}
-                                </h4>
-                                <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                                  {riverStatus === 'Normal' && "The flow is safe and at expected baseline depth."}
-                                  {riverStatus === 'Alert' && "The water rises significantly above normal because of rain."}
-                                  {riverStatus === 'Warning' && "The water gets close to the top and may flood soon."}
-                                  {riverStatus === 'Danger' && "The water spills over and causes floods that require moving people."}
-                                </p>
-                              </div>
-                            </div>
-                          )}
                         </div>
-                        <div className="space-y-1.5 md:col-span-2 hidden">
-                          {/* Hidden status select, auto-controlled by level */}
-                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Map Status *</label>
+
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">River Status *</label>
+                            <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">Customizable</span>
+                          </div>
                           <select
-                            required disabled={!selectedFeatureId || isSubmitting} value={riverStatus} onChange={(e) => setRiverStatus(e.target.value)}
-                            className="block w-full px-3 py-2 border rounded-lg bg-gray-100 dark:bg-zinc-900 border-gray-300 dark:border-zinc-700 text-gray-500"
+                            required 
+                            disabled={!selectedFeatureId || isSubmitting} 
+                            value={riverStatus} 
+                            onChange={(e) => setRiverStatus(e.target.value)}
+                            className="block w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                           >
-                            <option value="">-- Auto Calculated --</option>
-                            <option value="Normal">Normal</option>
-                            <option value="Alert">Alert</option>
-                            <option value="Warning">Warning</option>
-                            <option value="Danger">Danger</option>
+                            <option value="">-- Select Status --</option>
+                            <option value="Normal">Normal (Safe / Baseline)</option>
+                            <option value="Alert">Alert (Waspada)</option>
+                            <option value="Warning">Warning (Amaran)</option>
+                            <option value="Danger">Danger (Bahaya)</option>
                           </select>
                         </div>
+
+                        {riverStatus && (
+                          <div className="md:col-span-2 p-3 rounded-lg border flex items-start gap-3 bg-gray-50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700">
+                            {riverStatus === 'Normal' && <div className="text-green-500 mt-0.5"><CheckCircle2 className="w-5 h-5" /></div>}
+                            {riverStatus === 'Alert' && <div className="text-yellow-500 mt-0.5"><AlertCircle className="w-5 h-5" /></div>}
+                            {riverStatus === 'Warning' && <div className="text-orange-500 mt-0.5"><AlertCircle className="w-5 h-5" /></div>}
+                            {riverStatus === 'Danger' && <div className="text-red-500 mt-0.5"><AlertCircle className="w-5 h-5" /></div>}
+
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between">
+                                <h4 className={`font-semibold text-sm ${
+                                  riverStatus === 'Normal' ? 'text-green-700 dark:text-green-400' :
+                                  riverStatus === 'Alert' ? 'text-yellow-700 dark:text-yellow-400' :
+                                  riverStatus === 'Warning' ? 'text-orange-700 dark:text-orange-400' :
+                                  'text-red-700 dark:text-red-400'
+                                }`}>
+                                  {riverStatus} Stage
+                                </h4>
+                                <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                                  Applies to map telemetry & AI
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                                {riverStatus === 'Normal' && "The river flow is safe and within expected baseline depth."}
+                                {riverStatus === 'Alert' && "Water rises significantly above normal; monitoring activated."}
+                                {riverStatus === 'Warning' && "Water approaches bankfull stage; localized overflow possible."}
+                                {riverStatus === 'Danger' && "Critical overtopping threshold; flood evacuation required."}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="space-y-1.5 md:col-span-2">
                           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Additional Notes (Optional)</label>
                           <textarea
                             rows={2} disabled={!selectedFeatureId || isSubmitting} value={riverNote} onChange={(e) => setRiverNote(e.target.value)}
-                            className="block w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 resize-none"
-                            placeholder="E.g., Debris observed, rain continuing..."
+                            className="block w-full px-3 py-2 border rounded-lg bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 resize-none text-gray-900 dark:text-white"
+                            placeholder="E.g., Debris observed, station gauge threshold adjusted, rain continuing..."
                           />
                         </div>
                       </div>
