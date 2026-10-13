@@ -100,11 +100,11 @@ export default function WelcomeModal({ isOpen, onClose }) {
                       If you require Editor or Administrator permissions, please contact the administrator:
                     </p>
                     <a 
-                      href="mailto:nasrinsahiraa@gmail.com" 
+                      href="mailto:admin@floodwise.com" 
                       className="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-blue-700 dark:text-blue-400 hover:underline"
                     >
                       <Mail className="w-4 h-4" />
-                      nasrinsahiraa@gmail.com
+                      admin@floodwise.com
                     </a>
                   </div>
                 </div>

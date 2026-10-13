@@ -154,19 +154,19 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
   };
 
   return (
-    <div className="w-full bg-white dark:bg-zinc-950 border-y border-gray-300 dark:border-zinc-800 relative mb-6">
+    <div className="w-full bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm overflow-hidden relative mb-6">
       <div className="flex flex-col md:flex-row">
         
         {/* Left Side: Controls & Info */}
-        <div className="flex-shrink-0 w-full md:w-64 flex flex-col justify-between border-b md:border-b-0 md:border-r border-gray-300 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900/50 p-5">
+        <div className="flex-shrink-0 w-full md:w-64 flex flex-col justify-between border-b md:border-b-0 md:border-r border-gray-200 dark:border-zinc-800 bg-gray-50/80 dark:bg-zinc-900/60 p-4 sm:p-5">
           <div>
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-2 sm:mb-3">
               <Activity className="w-5 h-5 text-blue-600 dark:text-blue-500" />
               <h2 className="text-sm font-bold font-display uppercase tracking-widest text-gray-900 dark:text-white">
                 Intelligence
               </h2>
             </div>
-            <p className="text-xs font-sans text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+            <p className="text-xs font-sans text-gray-600 dark:text-gray-400 mb-4 sm:mb-6 leading-relaxed">
               Automated cross-agency synthesis using internal datasets and external meteorological APIs.
             </p>
           </div>
@@ -174,7 +174,7 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
           <button
             onClick={generateReport}
             disabled={isGenerating}
-            className="w-full py-2.5 px-4 bg-gray-900 hover:bg-blue-600 dark:bg-white dark:hover:bg-blue-500 text-white dark:text-gray-900 text-xs font-bold font-sans uppercase tracking-wider transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed group"
+            className="w-full py-2.5 px-4 bg-gray-900 hover:bg-blue-600 dark:bg-white dark:hover:bg-blue-500 text-white dark:text-gray-900 rounded-lg text-xs font-bold font-sans uppercase tracking-wider transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed group shadow-sm"
           >
             {isGenerating ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -186,7 +186,7 @@ export default function AIAssistantWidget({ roadsData, riversData, ppsData }) {
         </div>
 
         {/* Right Side: Output */}
-        <div className="flex-grow p-5 min-h-[160px] flex flex-col justify-center bg-white dark:bg-zinc-950">
+        <div className="flex-grow p-4 sm:p-5 min-h-[140px] sm:min-h-[160px] flex flex-col justify-center bg-white dark:bg-zinc-900">
           <AnimatePresence mode="wait">
             {!report && !errorMsg && !isGenerating && (
               <motion.div 

@@ -169,7 +169,7 @@ export default function Login() {
               <div className="pt-2 text-center">
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   For account inquiries, please contact<br/>
-                  <a href="mailto:nasrinsahiraa@gmail.com" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">nasrinsahiraa@gmail.com</a>
+                  <a href="mailto:admin@floodwise.com" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">admin@floodwise.com</a>
                 </p>
               </div>
             </form>

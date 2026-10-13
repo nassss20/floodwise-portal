@@ -79,7 +79,21 @@ export default function Dashboard() {
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [districtFilter, setDistrictFilter] = useState('All');
   const [dateFilter, setDateFilter] = useState('');
+
+  const JOHOR_DISTRICTS = [
+    'Batu Pahat',
+    'Johor Bahru',
+    'Kluang',
+    'Kota Tinggi',
+    'Kulai',
+    'Mersing',
+    'Muar',
+    'Pontian',
+    'Segamat',
+    'Tangkak'
+  ];
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -303,24 +317,26 @@ export default function Dashboard() {
   const filteredLogs = logs.filter(log => {
     const matchesSearch = log.road_name?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'All' || log.status === statusFilter;
+    const matchesDistrict = districtFilter === 'All' || (log.district && log.district.toLowerCase() === districtFilter.toLowerCase());
     let matchesDate = true;
     if (dateFilter) {
       const logDate = log.created_at ? log.created_at.substring(0, 10) : '';
       matchesDate = logDate === dateFilter;
     }
-    return matchesSearch && matchesStatus && matchesDate;
+    return matchesSearch && matchesStatus && matchesDistrict && matchesDate;
   });
 
   // Filter Defect Logs locally
   const filteredDefectLogs = defectLogs.filter(log => {
     const matchesSearch = log.road_name?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'All' || log.status === statusFilter;
+    const matchesDistrict = districtFilter === 'All' || (log.district && log.district.toLowerCase() === districtFilter.toLowerCase());
     let matchesDate = true;
     if (dateFilter) {
       const logDate = log.created_at ? log.created_at.substring(0, 10) : '';
       matchesDate = logDate === dateFilter;
     }
-    return matchesSearch && matchesStatus && matchesDate;
+    return matchesSearch && matchesStatus && matchesDistrict && matchesDate;
   });
 
   // Filter PPS Data
@@ -328,7 +344,8 @@ export default function Dashboard() {
     const matchesSearch = (pps.PPS_Name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       pps.District?.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesStatus = statusFilter === 'All' || pps.Status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesDistrict = districtFilter === 'All' || (pps.District && pps.District.toLowerCase() === districtFilter.toLowerCase());
+    return matchesSearch && matchesStatus && matchesDistrict;
   });
 
   // Filter Rivers Data
@@ -336,19 +353,21 @@ export default function Dashboard() {
     const matchesSearch = (river.River_Name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       river.District?.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesStatus = statusFilter === 'All' || river.Status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesDistrict = districtFilter === 'All' || (river.District && river.District.toLowerCase() === districtFilter.toLowerCase());
+    return matchesSearch && matchesStatus && matchesDistrict;
   });
 
   // Filter River Logs
   const filteredRiverLogs = riverLogs.filter(log => {
     const matchesSearch = log.river_name?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'All' || log.status === statusFilter;
+    const matchesDistrict = districtFilter === 'All' || (log.district && log.district.toLowerCase() === districtFilter.toLowerCase());
     let matchesDate = true;
     if (dateFilter) {
       const logDate = log.created_at ? log.created_at.substring(0, 10) : '';
       matchesDate = logDate === dateFilter;
     }
-    return matchesSearch && matchesStatus && matchesDate;
+    return matchesSearch && matchesStatus && matchesDistrict && matchesDate;
   });
 
   const totalPages = Math.ceil(
@@ -360,7 +379,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, dateFilter, activeTab]);
+  }, [searchQuery, statusFilter, districtFilter, dateFilter, activeTab, riversSubTab]);
 
   const startIndex = (currentPage - 1) * rowsPerPage;
   const paginatedLogs = filteredLogs.slice(startIndex, startIndex + rowsPerPage);
@@ -387,22 +406,22 @@ export default function Dashboard() {
       transition={{ duration: 0.4 }}
       className="w-full h-full flex flex-col gap-4"
     >
-      <div className="flex justify-between items-center mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Dashboard Overview</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Flood status and road accessibility in Johor.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Dashboard Overview</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">Flood status and road accessibility in Johor.</p>
         </div>
-        <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-1 border border-gray-200 dark:border-zinc-700 shadow-sm">
+        <div className="w-full sm:w-auto grid grid-cols-2 sm:flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-1 border border-gray-200 dark:border-zinc-700 shadow-sm">
           <button
             onClick={() => { setMapMode('flood'); if (activeTab === 'road_defects') setActiveTab('roads'); }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${mapMode === 'flood' ? 'bg-white dark:bg-zinc-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+            className={`flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${mapMode === 'flood' ? 'bg-white dark:bg-zinc-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
           >
             <Droplets className="w-4 h-4" />
             Flood Status
           </button>
           <button
             onClick={() => { setMapMode('defects'); if (activeTab === 'roads') setActiveTab('road_defects'); }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${mapMode === 'defects' ? 'bg-white dark:bg-zinc-700 text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+            className={`flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${mapMode === 'defects' ? 'bg-white dark:bg-zinc-700 text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
           >
             <AlertTriangle className="w-4 h-4" />
             Road Defects
@@ -450,12 +469,12 @@ export default function Dashboard() {
       <div className="w-full mt-6 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm overflow-hidden flex flex-col">
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-900/50 pt-2 px-6 gap-6">
+        <div className="flex border-b border-gray-200 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-900/50 pt-2 px-4 sm:px-6 gap-2 sm:gap-6 overflow-x-auto no-scrollbar scroll-smooth">
           {canViewRoads && (
             <>
               <button
                 onClick={() => { setActiveTab('roads'); setMapMode('flood'); setStatusFilter('All'); setCurrentPage(1); }}
-                className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'roads'
+                className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap ${activeTab === 'roads'
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                   }`}
@@ -465,7 +484,7 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={() => { setActiveTab('road_defects'); setMapMode('defects'); setStatusFilter('All'); setCurrentPage(1); }}
-                className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'road_defects'
+                className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap ${activeTab === 'road_defects'
                   ? 'border-orange-500 text-orange-600 dark:text-orange-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                   }`}
@@ -478,7 +497,7 @@ export default function Dashboard() {
           {canViewPPS && (
             <button
               onClick={() => { setActiveTab('pps'); setMapMode('flood'); setStatusFilter('All'); setCurrentPage(1); }}
-              className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'pps'
+              className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap ${activeTab === 'pps'
                 ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                 }`}
@@ -490,7 +509,7 @@ export default function Dashboard() {
           {canViewRivers && (
             <button
               onClick={() => { setActiveTab('rivers'); setMapMode('flood'); setStatusFilter('All'); setCurrentPage(1); }}
-              className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'rivers'
+              className={`pb-3 pt-3 flex items-center gap-2 font-semibold text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap ${activeTab === 'rivers'
                 ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
                 }`}
@@ -502,9 +521,9 @@ export default function Dashboard() {
         </div>
 
         {/* Header Info */}
-        <div className="px-6 py-4 flex justify-between items-center border-b border-gray-200 dark:border-zinc-800">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center border-b border-gray-200 dark:border-zinc-800 gap-3">
           <div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
               {activeTab === 'roads' ? (
                 <><Clock className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Flood Data Entry History</>
               ) : activeTab === 'road_defects' ? (
@@ -515,7 +534,7 @@ export default function Dashboard() {
                 <><Droplets className="w-5 h-5 text-cyan-600 dark:text-cyan-400" /> River Water Levels</>
               )}
             </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
               {activeTab === 'roads'
                 ? "Recent flood status updates submitted through the portal."
                 : activeTab === 'road_defects'
@@ -526,18 +545,18 @@ export default function Dashboard() {
               }
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <span className="flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
             </span>
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Live Sync</span>
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:inline">Live Sync</span>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="px-6 py-4 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 flex flex-col sm:flex-row flex-wrap gap-4">
-          <div className="flex-1 min-w-[200px]">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 flex flex-col sm:flex-row flex-wrap gap-2.5 sm:gap-3 items-stretch sm:items-center">
+          <div className="flex-1 min-w-[180px]">
             <input
               type="text"
               placeholder={
@@ -587,6 +606,20 @@ export default function Dashboard() {
               )}
             </select>
           </div>
+          <div className="w-full sm:w-auto">
+            <select
+              value={districtFilter}
+              onChange={(e) => setDistrictFilter(e.target.value)}
+              className="w-full sm:w-auto px-3 py-2 text-sm border border-gray-300 dark:border-zinc-700 rounded-lg bg-gray-50 dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="All">All Districts</option>
+              {JOHOR_DISTRICTS.map((district) => (
+                <option key={district} value={district}>
+                  {district}
+                </option>
+              ))}
+            </select>
+          </div>
           {(activeTab === 'roads' || activeTab === 'road_defects') && (
             <div className="w-full sm:w-auto">
               <input
@@ -597,15 +630,16 @@ export default function Dashboard() {
               />
             </div>
           )}
-          {(searchQuery || statusFilter !== 'All' || dateFilter) && (
+          {(searchQuery || statusFilter !== 'All' || districtFilter !== 'All' || dateFilter) && (
             <div className="w-full sm:w-auto flex items-center">
               <button
                 onClick={() => {
                   setSearchQuery('');
                   setStatusFilter('All');
+                  setDistrictFilter('All');
                   setDateFilter('');
                 }}
-                className="text-sm text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                className="text-sm text-blue-600 dark:text-blue-400 hover:underline font-medium py-1"
               >
                 Clear Filters
               </button>
@@ -719,11 +753,11 @@ export default function Dashboard() {
               <tbody className="divide-y divide-gray-200 dark:divide-zinc-800/80">
                 {isLoadingDefectLogs ? (
                   <tr>
-                    <td colSpan="5" className="px-6 py-8 text-center">Loading defects...</td>
+                    <td colSpan="7" className="px-6 py-8 text-center">Loading defects...</td>
                   </tr>
                 ) : paginatedDefectLogs.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="px-6 py-12 text-center text-gray-500">No defect entries found</td>
+                    <td colSpan="7" className="px-6 py-12 text-center text-gray-500">No defect entries found</td>
                   </tr>
                 ) : (
                   paginatedDefectLogs.map((log) => (
@@ -820,11 +854,11 @@ export default function Dashboard() {
               <tbody className="divide-y divide-gray-200 dark:divide-zinc-800/80">
                 {isLoadingPps ? (
                   <tr>
-                    <td colSpan="4" className="px-6 py-8 text-center">Loading PPS...</td>
+                    <td colSpan="6" className="px-6 py-8 text-center">Loading PPS...</td>
                   </tr>
                 ) : paginatedPps.length === 0 ? (
                   <tr>
-                    <td colSpan="4" className="px-6 py-12 text-center text-gray-500">No PPS found</td>
+                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500">No PPS found</td>
                   </tr>
                 ) : (
                   paginatedPps.map((pps, idx) => (
@@ -1053,23 +1087,23 @@ export default function Dashboard() {
 
         {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900/50 flex items-center justify-between">
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              Showing <span className="font-semibold text-gray-900 dark:text-white">{(currentPage - 1) * rowsPerPage + 1}</span> to <span className="font-semibold text-gray-900 dark:text-white">{Math.min(currentPage * rowsPerPage, activeTab === 'roads' ? filteredLogs.length : activeTab === 'pps' ? filteredPps.length : riversSubTab === 'updates' ? filteredRiverLogs.length : filteredRivers.length)}</span> entries
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900/50 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 text-center sm:text-left">
+              Showing <span className="font-semibold text-gray-900 dark:text-white">{(currentPage - 1) * rowsPerPage + 1}</span> to <span className="font-semibold text-gray-900 dark:text-white">{Math.min(currentPage * rowsPerPage, activeTab === 'roads' ? filteredLogs.length : activeTab === 'road_defects' ? filteredDefectLogs.length : activeTab === 'pps' ? filteredPps.length : riversSubTab === 'updates' ? filteredRiverLogs.length : filteredRivers.length)}</span> entries
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="px-3 py-1.5 text-sm font-medium rounded-md border bg-white dark:bg-zinc-800 transition-colors"
+                className="px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md border bg-white dark:bg-zinc-800 transition-colors disabled:opacity-50"
               >
                 Previous
               </button>
-              <div className="px-2 text-sm text-gray-600">Page {currentPage} of {totalPages}</div>
+              <div className="px-2 text-xs sm:text-sm text-gray-600 dark:text-gray-300">Page {currentPage} of {totalPages}</div>
               <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="px-3 py-1.5 text-sm font-medium rounded-md border bg-white dark:bg-zinc-800 transition-colors"
+                className="px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md border bg-white dark:bg-zinc-800 transition-colors disabled:opacity-50"
               >
                 Next
               </button>
@@ -1085,10 +1119,10 @@ export default function Dashboard() {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setIsModalOpen(true)}
-          className="fixed bottom-8 right-8 z-40 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg shadow-blue-900/20 flex items-center gap-2 group transition-colors"
+          className="fixed bottom-5 right-5 sm:bottom-8 sm:right-8 z-40 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-3.5 sm:p-4 shadow-lg shadow-blue-900/20 flex items-center gap-2 group transition-colors"
         >
-          <Settings className="w-6 h-6" />
-          <span className="font-semibold pr-2 max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 ease-in-out whitespace-nowrap">
+          <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
+          <span className="font-semibold text-sm pr-1 sm:pr-2 max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 ease-in-out whitespace-nowrap">
             Update Map Data
           </span>
         </motion.button>

@@ -1,14 +1,9 @@
-import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, RefreshCw, WifiOff, X, CheckCircle2, Share } from 'lucide-react';
+import { RefreshCw, WifiOff, X, CheckCircle2 } from 'lucide-react';
 import { usePWA } from '../context/PWAContext';
 
 export default function PWAPrompt() {
   const {
-    isInstallable,
-    isInstalled,
-    isIOS,
-    installApp,
     isOnline,
     offlineReady,
     setOfflineReady,
@@ -16,33 +11,6 @@ export default function PWAPrompt() {
     setNeedRefresh,
     updateServiceWorker,
   } = usePWA();
-
-  const [dismissedInstallBanner, setDismissedInstallBanner] = useState(false);
-  const [showIOSModal, setShowIOSModal] = useState(false);
-
-  useEffect(() => {
-    // Check if user previously dismissed the install banner in the last 3 days
-    const dismissedTime = localStorage.getItem('floodwise_pwa_dismissed');
-    if (dismissedTime) {
-      const daysPassed = (Date.now() - parseInt(dismissedTime, 10)) / (1000 * 60 * 60 * 24);
-      if (daysPassed < 3) {
-        setDismissedInstallBanner(true);
-      }
-    }
-  }, []);
-
-  const handleDismissInstall = () => {
-    setDismissedInstallBanner(true);
-    localStorage.setItem('floodwise_pwa_dismissed', Date.now().toString());
-  };
-
-  const handleInstallClick = async () => {
-    if (isIOS) {
-      setShowIOSModal(true);
-      return;
-    }
-    await installApp();
-  };
 
   return (
     <>
@@ -132,110 +100,6 @@ export default function PWAPrompt() {
               </button>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Floating Install App Banner */}
-      <AnimatePresence>
-        {!isInstalled && !dismissedInstallBanner && (isInstallable || isIOS) && (
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
-            className="fixed bottom-5 left-5 z-40 max-w-sm bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-gray-200 dark:border-zinc-800 rounded-2xl p-4 shadow-xl flex items-center gap-3.5"
-          >
-            <img
-              src="/floodwise-circle.png"
-              alt="FloodWise App"
-              className="w-12 h-12 rounded-xl object-contain drop-shadow"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-sm text-gray-900 dark:text-white">FloodWise App</span>
-                <span className="px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded text-[10px] font-semibold">
-                  PWA
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                Fast, offline-ready &amp; native view
-              </p>
-            </div>
-
-            <div className="flex items-center gap-1">
-              <button
-                onClick={handleInstallClick}
-                className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-xl shadow-sm transition-all whitespace-nowrap"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Install
-              </button>
-              <button
-                onClick={handleDismissInstall}
-                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg transition-colors"
-                title="Dismiss"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* iOS Instructions Modal */}
-      <AnimatePresence>
-        {showIOSModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl relative"
-            >
-              <button
-                onClick={() => setShowIOSModal(false)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="flex items-center gap-3 mb-4">
-                <img src="/floodwise-circle.png" alt="Logo" className="w-10 h-10 rounded-xl" />
-                <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white">Install FloodWise on iOS</h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Add to your Home Screen</p>
-                </div>
-              </div>
-
-              <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
-                <div className="flex items-start gap-3 bg-gray-50 dark:bg-zinc-800/60 p-3 rounded-xl">
-                  <div className="p-1.5 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-lg shrink-0 mt-0.5">
-                    <Share className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <strong className="text-gray-900 dark:text-white">Step 1:</strong> Tap the{' '}
-                    <strong>Share</strong> button at the bottom of Safari.
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 bg-gray-50 dark:bg-zinc-800/60 p-3 rounded-xl">
-                  <div className="p-1.5 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-lg shrink-0 mt-0.5">
-                    <Download className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <strong className="text-gray-900 dark:text-white">Step 2:</strong> Scroll down and select{' '}
-                    <strong>"Add to Home Screen"</strong>.
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setShowIOSModal(false)}
-                className="w-full mt-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium text-sm transition-colors"
-              >
-                Got It
-              </button>
-            </motion.div>
-          </div>
         )}
       </AnimatePresence>
     </>

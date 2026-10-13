@@ -212,17 +212,76 @@ export default function MapDashboardOverlays({ roadsLogs = [], defectLogs = [], 
     subtitle: `${river.Status} • ${(river.Water_Level || 0).toFixed(2)}m`
   }));
 
+  const [showMobileOverlays, setShowMobileOverlays] = useState(false);
+
   return (
     <>
-      {/* LEFT SIDE - Districts */}
-      <div className="absolute top-3 left-3 bottom-8 z-[400] flex flex-col gap-3 w-56 pointer-events-none">
+      {/* Mobile Toggle Button */}
+      <div className="lg:hidden absolute top-3 right-3 z-[400] pointer-events-auto">
+        <button
+          onClick={() => setShowMobileOverlays(!showMobileOverlays)}
+          className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-gray-200 dark:border-zinc-700 px-3 py-1.5 rounded-lg shadow-md text-xs font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-1.5 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+        >
+          <MapPin className="w-3.5 h-3.5 text-blue-500" />
+          <span>Quick Lists</span>
+        </button>
+      </div>
+
+      {/* Mobile Bottom Sheet / Modal Drawer */}
+      {showMobileOverlays && (
+        <div className="lg:hidden fixed inset-0 z-[600] pointer-events-auto bg-black/50 backdrop-blur-xs flex flex-col justify-end">
+          <div className="bg-white dark:bg-zinc-900 border-t border-gray-200 dark:border-zinc-800 rounded-t-2xl max-h-[75vh] flex flex-col shadow-2xl overflow-hidden p-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-zinc-800 shrink-0">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-blue-500" />
+                <h3 className="font-bold text-sm text-gray-900 dark:text-white">Map Data Overlays</h3>
+              </div>
+              <button
+                onClick={() => setShowMobileOverlays(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs font-medium"
+              >
+                Close ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto pt-3 flex flex-col gap-3 custom-scrollbar">
+              <OverlayBox title="Johor Bahru Roads" icon={MapPin} items={jbRoads} type="road" onFeatureSelect={(f) => { onFeatureSelect(f); setShowMobileOverlays(false); }} />
+              <OverlayBox title="Kota Tinggi Roads" icon={MapPin} items={ktRoads} type="road" onFeatureSelect={(f) => { onFeatureSelect(f); setShowMobileOverlays(false); }} />
+              <OverlayBox title="Segamat Roads" icon={MapPin} items={segamatRoads} type="road" onFeatureSelect={(f) => { onFeatureSelect(f); setShowMobileOverlays(false); }} />
+              {mapMode === 'flood' ? (
+                <>
+                  <OverlayBox title="Evacuation Centers (PPS)" icon={Tent} items={ppsItems} type="pps" onFeatureSelect={(f) => { onFeatureSelect(f); setShowMobileOverlays(false); }} />
+                  <OverlayBox title="River Telemetry" icon={Droplets} items={riverItems} type="river" onFeatureSelect={(f) => { onFeatureSelect(f); setShowMobileOverlays(false); }} />
+                </>
+              ) : (
+                <OverlayBox 
+                  title="Completed Defects" 
+                  icon={MapPin} 
+                  filterKey="district"
+                  items={defectLogs.filter(log => log.status === 'Completed').map(log => ({
+                    name: log.road_name,
+                    district: log.district,
+                    status: log.status,
+                    colorClass: 'bg-green-500',
+                    subtitle: log.district || 'Unknown District'
+                  }))} 
+                  type="road" 
+                  onFeatureSelect={(f) => { onFeatureSelect(f); setShowMobileOverlays(false); }} 
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DESKTOP LEFT SIDE - Districts */}
+      <div className="hidden lg:flex absolute top-3 left-3 bottom-8 z-[400] flex-col gap-3 w-56 pointer-events-none">
         <OverlayBox title="Johor Bahru" icon={MapPin} items={jbRoads} type="road" onFeatureSelect={onFeatureSelect} />
         <OverlayBox title="Kota Tinggi" icon={MapPin} items={ktRoads} type="road" onFeatureSelect={onFeatureSelect} />
         <OverlayBox title="Segamat" icon={MapPin} items={segamatRoads} type="road" onFeatureSelect={onFeatureSelect} />
       </div>
 
-      {/* RIGHT SIDE - PPS & Rivers OR Defect Summaries */}
-      <div className="absolute top-3 right-3 bottom-8 z-[400] flex flex-col gap-3 w-64 pointer-events-none">
+      {/* DESKTOP RIGHT SIDE - PPS & Rivers OR Defect Summaries */}
+      <div className="hidden lg:flex absolute top-3 right-3 bottom-8 z-[400] flex-col gap-3 w-64 pointer-events-none">
         {mapMode === 'flood' ? (
           <>
             <OverlayBox title="Evacuation Centers (PPS)" icon={Tent} items={ppsItems} type="pps" onFeatureSelect={onFeatureSelect} />
