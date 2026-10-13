@@ -1,12 +1,27 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, Trash2, Users, AlertTriangle, CheckCircle2, AlertCircle, User, Mail } from 'lucide-react';
+import { ShieldAlert, Trash2, Users, AlertTriangle, CheckCircle2, AlertCircle, User, Mail, UserPlus, Search, Copy, Check, Clock, X, Code2 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { fetchRoads, fetchRivers, fetchPPS, updateFeatureStatus, updateRiverFeature } from '../lib/arcgisClient';
 
 export default function Admin() {
   const [logs, setLogs] = useState([]);
   const [roles, setRoles] = useState([]);
+  const [preassignedRoles, setPreassignedRoles] = useState([]);
+  const [isPreassignedTableMissing, setIsPreassignedTableMissing] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState('All');
+  
+  // Add User modal state
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [addEmailsText, setAddEmailsText] = useState('');
+  const [addSelectedRole, setAddSelectedRole] = useState('editor_jkr');
+  const [isAddingUsers, setIsAddingUsers] = useState(false);
+  const [addUserError, setAddUserError] = useState('');
+
+  // SQL Schema modal state
+  const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
 
   // Tabs for Logs
   const [activeLogTab, setActiveLogTab] = useState('roads'); // 'roads', 'rivers', 'pps', 'defects'
@@ -90,6 +105,27 @@ export default function Admin() {
         if (rolesError) throw rolesError;
         setRoles(rolesData || []);
 
+        // Fetch pre-assigned roles
+        try {
+          const { data: preData, error: preError } = await supabase
+            .from('preassigned_roles')
+            .select('*')
+            .order('created_at', { ascending: false });
+            
+          if (preError) {
+            if (preError.code === 'PGRST205' || preError.code === '42P01') {
+              setIsPreassignedTableMissing(true);
+            } else {
+              console.warn("Error fetching preassigned_roles:", preError);
+            }
+          } else {
+            setPreassignedRoles(preData || []);
+            setIsPreassignedTableMissing(false);
+          }
+        } catch (err) {
+          console.warn("Error querying preassigned_roles:", err);
+        }
+
         // Fetch ArcGIS roads for mapping
         const arcgisRoads = await fetchRoads();
         setRoads(arcgisRoads);
@@ -170,6 +206,161 @@ export default function Admin() {
       showStatus('error', err.message);
     }
   };
+
+  const handleUpdatePreassignedRole = async (id, newRole) => {
+    try {
+      const { error } = await supabase
+        .from('preassigned_roles')
+        .update({ role: newRole })
+        .eq('id', id);
+        
+      if (error) throw error;
+      
+      setPreassignedRoles(preassignedRoles.map(r => r.id === id ? { ...r, role: newRole } : r));
+      showStatus('success', 'Pre-assigned role updated successfully');
+    } catch (err) {
+      console.error(err);
+      showStatus('error', err.message);
+    }
+  };
+
+  const handleDeletePreassignedRole = async (id, email) => {
+    try {
+      const { error } = await supabase
+        .from('preassigned_roles')
+        .delete()
+        .eq('id', id);
+        
+      if (error) throw error;
+      
+      setPreassignedRoles(preassignedRoles.filter(r => r.id !== id));
+      showStatus('success', `Pre-assigned role revoked for ${email}`);
+    } catch (err) {
+      console.error(err);
+      showStatus('error', err.message);
+    }
+  };
+
+  const parseEmails = (text) => {
+    if (!text) return { valid: [], invalid: [] };
+    const rawTokens = text
+      .split(/[\n,;]+/)
+      .map(t => t.trim())
+      .filter(Boolean);
+      
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const valid = [];
+    const invalid = [];
+    const seen = new Set();
+    
+    for (const token of rawTokens) {
+      const lower = token.toLowerCase();
+      if (emailRegex.test(lower)) {
+        if (!seen.has(lower)) {
+          seen.add(lower);
+          valid.push(lower);
+        }
+      } else {
+        invalid.push(token);
+      }
+    }
+    return { valid, invalid };
+  };
+
+  const handleAddUsersSubmit = async (e) => {
+    e.preventDefault();
+    setAddUserError('');
+    const { valid } = parseEmails(addEmailsText);
+    
+    if (valid.length === 0) {
+      setAddUserError('Please enter at least one valid email address.');
+      return;
+    }
+
+    setIsAddingUsers(true);
+    try {
+      for (const email of valid) {
+        // 1. Check if user already exists in active roles
+        const existingActive = roles.find(r => 
+          (r.email && r.email.toLowerCase() === email) || 
+          (r.username && r.username.toLowerCase() === email)
+        );
+
+        if (existingActive) {
+          await supabase
+            .from('user_roles')
+            .update({ role: addSelectedRole })
+            .eq('id', existingActive.id);
+        }
+
+        // 2. Upsert into preassigned_roles (for users who haven't logged in yet, or to ensure sync on next login)
+        const { error: preErr } = await supabase
+          .from('preassigned_roles')
+          .upsert({ email, role: addSelectedRole }, { onConflict: 'email' });
+          
+        if (preErr) {
+          if (preErr.code === 'PGRST205' || preErr.code === '42P01') {
+            setIsPreassignedTableMissing(true);
+            throw new Error("Table 'preassigned_roles' does not exist in Supabase yet. Click 'View Setup SQL' to initialize it.");
+          }
+          throw preErr;
+        }
+      }
+
+      // Re-fetch roles
+      const { data: refetchedRoles } = await supabase
+        .from('user_roles')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (refetchedRoles) setRoles(refetchedRoles);
+
+      const { data: refetchedPre } = await supabase
+        .from('preassigned_roles')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (refetchedPre) setPreassignedRoles(refetchedPre);
+
+      showStatus('success', `Assigned role "${addSelectedRole}" to ${valid.length} user(s).`);
+      setAddEmailsText('');
+      setIsAddUserModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      setAddUserError(err.message || 'Failed to assign roles');
+    } finally {
+      setIsAddingUsers(false);
+    }
+  };
+
+  // Combined list for display
+  const combinedUserList = [
+    ...roles.map(r => ({
+      ...r,
+      isPreassigned: false,
+      displayEmail: r.email || r.username || '-',
+      searchKey: `${r.email || ''} ${r.username || ''} ${r.user_id || ''}`.toLowerCase(),
+    })),
+    ...preassignedRoles.map(p => ({
+      ...p,
+      isPreassigned: true,
+      displayEmail: p.email,
+      searchKey: `${p.email || ''} preassigned pending`.toLowerCase(),
+    }))
+  ];
+
+  const filteredUserList = combinedUserList.filter(item => {
+    const matchesSearch = !userSearchQuery || item.searchKey.includes(userSearchQuery.toLowerCase().trim());
+    
+    let matchesFilter = true;
+    if (userRoleFilter === 'Active') {
+      matchesFilter = !item.isPreassigned;
+    } else if (userRoleFilter === 'Pending') {
+      matchesFilter = item.isPreassigned;
+    } else if (userRoleFilter !== 'All') {
+      matchesFilter = item.role === userRoleFilter;
+    }
+
+    return matchesSearch && matchesFilter;
+  });
 
   const executeDeleteLog = async () => {
     if (!logToDelete) return;
@@ -292,52 +483,258 @@ export default function Admin() {
         
         {/* User Roles Section */}
         <section className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-200 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-900/50">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <Users className="w-5 h-5 text-blue-500" />
-              Role Management
-            </h2>
+          {/* Header */}
+          <div className="p-5 md:p-6 border-b border-gray-200 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-900/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                      Role Management
+                    </h2>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                      {roles.length} active{preassignedRoles.length > 0 ? ` • ${preassignedRoles.length} pending` : ''}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    Assign and regulate portal permissions for department staff
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions & Filters */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Search Bar */}
+              <div className="relative flex-1 sm:w-56">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search user or email..."
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-7 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
+                />
+                {userSearchQuery && (
+                  <button 
+                    onClick={() => setUserSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs px-1 cursor-pointer"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+
+              {/* Filter Dropdown */}
+              <select
+                value={userRoleFilter}
+                onChange={(e) => setUserRoleFilter(e.target.value)}
+                className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              >
+                <option value="All">All Statuses & Roles</option>
+                <option value="Active">Active Users Only</option>
+                <option value="Pending">Pending Pre-assigned Only</option>
+                <option disabled>──────────</option>
+                <option value="viewer">Viewer</option>
+                <option value="editor_jkr">Editor (JKR)</option>
+                <option value="editor_jkm">Editor (JKM)</option>
+                <option value="editor_jps">Editor (JPS)</option>
+                <option value="editor">Editor (All)</option>
+                <option value="admin">Admin</option>
+                <option value="banned">Banned</option>
+              </select>
+
+              {/* Add User Button */}
+              <button
+                onClick={() => setIsAddUserModalOpen(true)}
+                className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                Add User
+              </button>
+            </div>
           </div>
-          <div className="overflow-x-auto">
+
+          {/* Table Missing Warning (if SQL schema not yet executed) */}
+          {isPreassignedTableMissing && (
+            <div className="px-6 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800/40 flex items-center justify-between text-xs text-amber-800 dark:text-amber-200">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Notice: Pre-assigned roles table not yet initialized in Supabase.</span>
+              </div>
+              <button 
+                onClick={() => setIsSqlModalOpen(true)}
+                className="underline font-semibold hover:text-amber-900 dark:hover:text-amber-100 flex items-center gap-1 cursor-pointer"
+              >
+                <Code2 className="w-3.5 h-3.5" /> View Setup SQL
+              </button>
+            </div>
+          )}
+
+          {/* Scrollable Container with Sticky Header */}
+          <div className="overflow-x-auto max-h-[380px] overflow-y-auto divide-y divide-gray-200 dark:divide-zinc-800 custom-scrollbar relative">
             <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-              <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-zinc-800/50 dark:text-gray-300">
+              <thead className="text-xs text-gray-700 uppercase bg-gray-50/95 dark:bg-zinc-800/95 dark:text-gray-300 sticky top-0 z-10 backdrop-blur-xs border-b border-gray-200 dark:border-zinc-700">
                 <tr>
-                  <th scope="col" className="px-6 py-4 font-semibold">User ID</th>
-                  <th scope="col" className="px-6 py-4 font-semibold">Username</th>
-                  <th scope="col" className="px-6 py-4 font-semibold">Role</th>
-                  <th scope="col" className="px-6 py-4 font-semibold">Action</th>
+                  <th scope="col" className="px-6 py-3 font-semibold">User / Email</th>
+                  <th scope="col" className="px-6 py-3 font-semibold">Status</th>
+                  <th scope="col" className="px-6 py-3 font-semibold">Assigned Role</th>
+                  <th scope="col" className="px-6 py-3 font-semibold text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-zinc-800/80">
                 {isLoading ? (
-                  <tr><td colSpan="4" className="p-6 text-center">Loading...</td></tr>
-                ) : roles.map((role) => (
-                  <tr key={role.id} className="bg-white dark:bg-zinc-900">
-                    <td className="px-6 py-4 font-mono text-xs text-gray-500">{role.user_id}</td>
-                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{role.username || role.email || '-'}</td>
-                    <td className="px-6 py-4">
-                      <select
-                        value={role.role}
-                        onChange={(e) => handleUpdateRole(role.user_id, e.target.value)}
-                        disabled={role.user_id === '0875d7d7-3878-40df-9fe6-30a853c677a1'}
-                        className="px-3 py-1.5 text-sm border border-gray-300 dark:border-zinc-700 rounded-lg bg-gray-50 dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <option value="viewer">Viewer (Read-only)</option>
-                        <option value="editor_jkr">Editor (JKR) - Road Only</option>
-                        <option value="editor_jkm">Editor (JKM) - PPS Only</option>
-                        <option value="editor_jps">Editor (JPS) - Water Level Only</option>
-                        <option value="editor">Editor (All)</option>
-                        <option value="admin">Admin (Full Access)</option>
-                        <option value="banned">Banned (No Access)</option>
-                      </select>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-xs text-gray-500 dark:text-gray-400">Auto-saved</span>
+                  <tr>
+                    <td colSpan="4" className="p-8 text-center text-gray-500">
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        <span>Loading user roles...</span>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                ) : filteredUserList.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" className="p-8 text-center text-gray-500">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Users className="w-8 h-8 text-gray-400 opacity-60" />
+                        <p className="text-sm font-medium">No users found matching your filters</p>
+                        {(userSearchQuery || userRoleFilter !== 'All') && (
+                          <button
+                            onClick={() => { setUserSearchQuery(''); setUserRoleFilter('All'); }}
+                            className="text-xs text-blue-600 hover:underline cursor-pointer"
+                          >
+                            Clear search filters
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredUserList.map((item) => {
+                  if (item.isPreassigned) {
+                    // Pending Pre-assigned User
+                    return (
+                      <tr key={`pre-${item.id}`} className="bg-amber-50/20 dark:bg-amber-950/10 hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition-colors">
+                        <td className="px-6 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+                              <Mail className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="font-medium text-gray-900 dark:text-white text-sm">
+                                {item.email}
+                              </div>
+                              <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-0.5">
+                                <Clock className="w-3 h-3" />
+                                Pre-assigned (Awaiting login)
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-3.5">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                            Pre-assigned
+                          </span>
+                        </td>
+                        <td className="px-6 py-3.5">
+                          <select
+                            value={item.role}
+                            onChange={(e) => handleUpdatePreassignedRole(item.id, e.target.value)}
+                            className="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="viewer">Viewer (Read-only)</option>
+                            <option value="editor_jkr">Editor (JKR) - Road Only</option>
+                            <option value="editor_jkm">Editor (JKM) - PPS Only</option>
+                            <option value="editor_jps">Editor (JPS) - Water Level Only</option>
+                            <option value="editor">Editor (All)</option>
+                            <option value="admin">Admin (Full Access)</option>
+                          </select>
+                        </td>
+                        <td className="px-6 py-3.5 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="text-xs text-gray-400">Auto-saved</span>
+                            <button
+                              onClick={() => handleDeletePreassignedRole(item.id, item.email)}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors cursor-pointer"
+                              title="Revoke pre-assigned role"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  // Active Registered User
+                  return (
+                    <tr key={`act-${item.id}`} className="bg-white dark:bg-zinc-900 hover:bg-gray-50/60 dark:hover:bg-zinc-800/40 transition-colors">
+                      <td className="px-6 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 flex items-center justify-center shrink-0">
+                            <User className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900 dark:text-white text-sm">
+                              {item.email || item.username || item.user_id}
+                            </div>
+                            <div className="font-mono text-[11px] text-gray-400 dark:text-gray-500">
+                              ID: {item.user_id?.substring(0, 12)}...
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-3.5">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          Active
+                        </span>
+                      </td>
+                      <td className="px-6 py-3.5">
+                        <select
+                          value={item.role}
+                          onChange={(e) => handleUpdateRole(item.user_id, e.target.value)}
+                          disabled={item.user_id === '0875d7d7-3878-40df-9fe6-30a853c677a1'}
+                          className="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-zinc-700 rounded-lg bg-gray-50 dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="viewer">Viewer (Read-only)</option>
+                          <option value="editor_jkr">Editor (JKR) - Road Only</option>
+                          <option value="editor_jkm">Editor (JKM) - PPS Only</option>
+                          <option value="editor_jps">Editor (JPS) - Water Level Only</option>
+                          <option value="editor">Editor (All)</option>
+                          <option value="admin">Admin (Full Access)</option>
+                          <option value="banned">Banned (No Access)</option>
+                        </select>
+                      </td>
+                      <td className="px-6 py-3.5 text-right">
+                        <span className="text-xs text-gray-400">Auto-saved</span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+
+          {/* Table Footer */}
+          <div className="px-6 py-3 border-t border-gray-200 dark:border-zinc-800 bg-gray-50/60 dark:bg-zinc-900/60 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+            <span>
+              Showing <span className="font-semibold text-gray-700 dark:text-gray-300">{filteredUserList.length}</span> user(s)
+              {userSearchQuery || userRoleFilter !== 'All' ? ' (filtered)' : ''}
+            </span>
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                {roles.length} Active
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                {preassignedRoles.length} Pre-assigned
+              </span>
+            </div>
           </div>
         </section>
 
@@ -595,6 +992,239 @@ export default function Admin() {
                       ) : (
                         'Yes, Delete'
                       )}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Add Users Modal */}
+      <AnimatePresence>
+        {isAddUserModalOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isAddingUsers && setIsAddUserModalOpen(false)}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs"
+            />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl overflow-hidden pointer-events-auto border border-gray-200 dark:border-zinc-800"
+              >
+                <div className="p-5 md:p-6 border-b border-gray-200 dark:border-zinc-800 flex items-center justify-between bg-gray-50/50 dark:bg-zinc-900/50">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-xl">
+                      <UserPlus className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base md:text-lg font-bold text-gray-900 dark:text-white">
+                        Add User & Assign Roles
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Paste email addresses and assign portal permissions
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsAddUserModalOpen(false)}
+                    disabled={isAddingUsers}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleAddUsersSubmit} className="p-5 md:p-6 space-y-4">
+                  {addUserError && (
+                    <div className="p-3 text-xs bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 rounded-xl flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{addUserError}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                        User Email Address(es)
+                      </label>
+                      {addEmailsText.trim() && (() => {
+                        const { valid, invalid } = parseEmails(addEmailsText);
+                        return (
+                          <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                            {valid.length} valid email{valid.length === 1 ? '' : 's'}
+                            {invalid.length > 0 && ` (${invalid.length} invalid line${invalid.length === 1 ? '' : 's'})`}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <textarea
+                      rows={5}
+                      value={addEmailsText}
+                      onChange={(e) => setAddEmailsText(e.target.value)}
+                      placeholder={`officer1@jkr.gov.my\nofficer2@jps.gov.my\nrelief.team@jkm.gov.my`}
+                      className="w-full p-3 text-xs font-mono rounded-xl border border-gray-300 dark:border-zinc-700 bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all resize-y custom-scrollbar"
+                    />
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                      Supports multiple lines (one email per line) or comma-separated emails.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                      Role to Assign
+                    </label>
+                    <select
+                      value={addSelectedRole}
+                      onChange={(e) => setAddSelectedRole(e.target.value)}
+                      className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    >
+                      <option value="editor_jkr">Editor (JKR) - Road Status & Closures Only</option>
+                      <option value="editor_jkm">Editor (JKM) - PPS Shelters & Supplies Only</option>
+                      <option value="editor_jps">Editor (JPS) - River Water Levels Only</option>
+                      <option value="editor">Editor (All Domains)</option>
+                      <option value="admin">Admin - Full System & Role Control</option>
+                      <option value="viewer">Viewer - Read-only Map & Analytics</option>
+                    </select>
+                  </div>
+
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200/60 dark:border-blue-900/40 rounded-xl text-xs text-blue-800 dark:text-blue-300">
+                    <p className="font-semibold flex items-center gap-1.5 mb-0.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      Automatic Role Assignment
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-blue-700/80 dark:text-blue-300/80">
+                      If the user already registered, their role updates instantly. If not yet registered, the role will be automatically granted the moment they sign in with this email.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddUserModalOpen(false)}
+                      disabled={isAddingUsers}
+                      className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-zinc-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-semibold hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isAddingUsers || parseEmails(addEmailsText).valid.length === 0}
+                      className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {isAddingUsers ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                          <span>Assigning...</span>
+                        </>
+                      ) : (
+                        `Assign Roles (${parseEmails(addEmailsText).valid.length || 0})`
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* SQL Setup Modal */}
+      <AnimatePresence>
+        {isSqlModalOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSqlModalOpen(false)}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs"
+            />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="w-full max-w-xl bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl overflow-hidden pointer-events-auto border border-gray-200 dark:border-zinc-800"
+              >
+                <div className="p-5 md:p-6 border-b border-gray-200 dark:border-zinc-800 flex items-center justify-between bg-gray-50/50 dark:bg-zinc-900/50">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 rounded-xl">
+                      <Code2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base md:text-lg font-bold text-gray-900 dark:text-white">
+                        Database Schema Setup
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Run this SQL snippet in your Supabase Dashboard SQL Editor
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsSqlModalOpen(false)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-5 md:p-6 space-y-4">
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    To enable pre-assigning roles before users log in, run this script once in your Supabase SQL Editor:
+                  </p>
+                  
+                  <div className="relative">
+                    <pre className="p-4 rounded-xl bg-zinc-950 text-zinc-100 font-mono text-[11px] overflow-x-auto max-h-60 custom-scrollbar border border-zinc-800">
+{`ALTER TABLE public.user_roles ADD COLUMN IF NOT EXISTS email TEXT;
+
+CREATE TABLE IF NOT EXISTS public.preassigned_roles (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.preassigned_roles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable read access for authenticated users" ON public.preassigned_roles
+    FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Enable insert for authenticated users" ON public.preassigned_roles
+    FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Enable update for authenticated users" ON public.preassigned_roles
+    FOR UPDATE USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Enable delete for authenticated users" ON public.preassigned_roles
+    FOR DELETE USING (auth.role() = 'authenticated');`}
+                    </pre>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`ALTER TABLE public.user_roles ADD COLUMN IF NOT EXISTS email TEXT;\n\nCREATE TABLE IF NOT EXISTS public.preassigned_roles (\n    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n    email TEXT UNIQUE NOT NULL,\n    role TEXT NOT NULL DEFAULT 'viewer',\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL\n);\n\nALTER TABLE public.preassigned_roles ENABLE ROW LEVEL SECURITY;\n\nCREATE POLICY "Enable read access for authenticated users" ON public.preassigned_roles\n    FOR SELECT USING (auth.role() = 'authenticated');\n\nCREATE POLICY "Enable insert for authenticated users" ON public.preassigned_roles\n    FOR INSERT WITH CHECK (auth.role() = 'authenticated');\n\nCREATE POLICY "Enable update for authenticated users" ON public.preassigned_roles\n    FOR UPDATE USING (auth.role() = 'authenticated');\n\nCREATE POLICY "Enable delete for authenticated users" ON public.preassigned_roles\n    FOR DELETE USING (auth.role() = 'authenticated');`);
+                        setCopiedSql(true);
+                        setTimeout(() => setCopiedSql(false), 2500);
+                      }}
+                      className="absolute top-2.5 right-2.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {copiedSql ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedSql ? 'Copied!' : 'Copy SQL'}
+                    </button>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      onClick={() => setIsSqlModalOpen(false)}
+                      className="px-4 py-2 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-800 dark:text-gray-200 rounded-xl text-xs font-medium transition-colors cursor-pointer"
+                    >
+                      Close
                     </button>
                   </div>
                 </div>
